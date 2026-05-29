@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import Logo from '../shared/Logo'
 import type { GlobalState, Rule } from '../shared/types'
 import { ACTION_GET_STATE, ACTION_SET_MASTER, ACTION_UPSERT_RULE } from '../shared/messaging'
 
@@ -60,7 +61,7 @@ export default function Popup() {
       {/* Header */}
       <div style={S.header}>
         <div style={S.brand}>
-          <span style={S.logo}>⚡</span>
+          <Logo size={22} />
           <span style={S.title}>ProxyPilot</span>
         </div>
         <label style={S.toggle}>
@@ -115,7 +116,6 @@ const S: Record<string, React.CSSProperties> = {
   loading: { padding: 24, textAlign: 'center', color: '#6b7280' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #f3f4f6' },
   brand: { display: 'flex', alignItems: 'center', gap: 8 },
-  logo: { fontSize: 18 },
   title: { fontWeight: 600, fontSize: 15 },
   toggle: { cursor: 'pointer' },
   track: { width: 40, height: 22, borderRadius: 9999, position: 'relative', transition: 'background 0.2s', display: 'flex', alignItems: 'center' },

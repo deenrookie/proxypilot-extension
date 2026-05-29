@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import Logo from '../shared/Logo'
 import type { Rule, RuleType, RuleAction, MatchCondition, UrlOperator } from '../shared/types'
 import {
   ACTION_GET_STATE, ACTION_SET_MASTER, ACTION_UPSERT_RULE, ACTION_DELETE_RULE,
@@ -474,7 +475,7 @@ export default function Options() {
       {/* Top nav */}
       <div style={S.topNav}>
         <div style={S.navBrand}>
-          <span style={{ fontSize: 22 }}>⚡</span>
+          <Logo size={32} />
           <span style={S.navTitle}>ProxyPilot</span>
         </div>
         <div style={S.navRight}>
