@@ -222,8 +222,74 @@ function ActionEditor({ action, onChange }: { action: RuleAction; onChange: (a: 
         </label>
       )
 
-    case 'modifyQueryParams':
-      return <p style={{ color: '#6b7280', fontSize: 13 }}>Query param editing coming soon.</p>
+    case 'modifyQueryParams': {
+      const addEntries = Object.entries(action.add ?? {})
+      const removeList = action.remove ?? []
+
+      const setAdd = (entries: [string, string][]) =>
+        onChange({ ...action, add: Object.fromEntries(entries) })
+
+      const setAddEntry = (idx: number, field: 'key' | 'value', val: string) => {
+        const next = [...addEntries]
+        next[idx] = field === 'key'
+          ? [val, next[idx]?.[1] ?? '']
+          : [next[idx]?.[0] ?? '', val]
+        setAdd(next)
+      }
+
+      const addAddEntry = () => setAdd([...addEntries, ['', '']])
+      const removeAddEntry = (idx: number) => setAdd(addEntries.filter((_, i) => i !== idx))
+
+      const addRemoveEntry = () =>
+        onChange({ ...action, remove: [...removeList, ''] })
+      const setRemoveEntry = (idx: number, val: string) =>
+        onChange({ ...action, remove: removeList.map((v, i) => (i === idx ? val : v)) })
+      const deleteRemoveEntry = (idx: number) =>
+        onChange({ ...action, remove: removeList.filter((_, i) => i !== idx) })
+
+      return (
+        <>
+          {/* Add / override params */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ ...S.label, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Add / Override Params</span>
+              <button style={S.btnSmall} onClick={addAddEntry}>+ Add param</button>
+            </div>
+            {addEntries.length === 0 && (
+              <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>No params to add yet.</p>
+            )}
+            {addEntries.map(([k, v], i) => (
+              <div key={i} style={{ ...S.row, marginBottom: 6 }}>
+                <input style={{ ...S.input, flex: 1 }} placeholder="param name"
+                  value={k} onChange={(e) => setAddEntry(i, 'key', e.target.value)} />
+                <span style={{ color: '#9ca3af', flexShrink: 0 }}>=</span>
+                <input style={{ ...S.input, flex: 2 }} placeholder="value"
+                  value={v} onChange={(e) => setAddEntry(i, 'value', e.target.value)} />
+                <button style={S.btnDanger} onClick={() => removeAddEntry(i)}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          {/* Remove params */}
+          <div>
+            <div style={{ ...S.label, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Remove Params</span>
+              <button style={S.btnSmall} onClick={addRemoveEntry}>+ Add param</button>
+            </div>
+            {removeList.length === 0 && (
+              <p style={{ fontSize: 12, color: '#9ca3af' }}>No params to remove yet.</p>
+            )}
+            {removeList.map((name, i) => (
+              <div key={i} style={{ ...S.row, marginBottom: 6 }}>
+                <input style={{ ...S.input, flex: 1 }} placeholder="param name to remove"
+                  value={name} onChange={(e) => setRemoveEntry(i, e.target.value)} />
+                <button style={S.btnDanger} onClick={() => deleteRemoveEntry(i)}>✕</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )
+    }
 
     case 'userAgent':
       return (

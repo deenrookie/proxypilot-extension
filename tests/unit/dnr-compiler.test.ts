@@ -86,6 +86,47 @@ describe('compileToDNR', () => {
     expect(a.requestHeaders[0].value).toBe('CustomUA/1.0')
   })
 
+  it('compiles modifyQueryParams — add and remove', () => {
+    const rule = baseRule({
+      type: 'modifyQueryParams',
+      action: {
+        type: 'modifyQueryParams',
+        add: { foo: 'bar', env: 'test' },
+        remove: ['debug', 'token'],
+      },
+    })
+    const rules = compileToDNR([rule])
+    expect(rules[0].action.type).toBe('redirect')
+    const a = rules[0].action as any
+    const qt = a.redirect.transform.queryTransform
+    expect(qt.addOrReplaceParams).toHaveLength(2)
+    expect(qt.addOrReplaceParams).toContainEqual({ key: 'foo', value: 'bar' })
+    expect(qt.addOrReplaceParams).toContainEqual({ key: 'env', value: 'test' })
+    expect(qt.removeParams).toEqual(['debug', 'token'])
+  })
+
+  it('compiles modifyQueryParams — add only', () => {
+    const rule = baseRule({
+      type: 'modifyQueryParams',
+      action: { type: 'modifyQueryParams', add: { x: '1' } },
+    })
+    const rules = compileToDNR([rule])
+    const a = rules[0].action as any
+    expect(a.redirect.transform.queryTransform.addOrReplaceParams).toHaveLength(1)
+    expect(a.redirect.transform.queryTransform.removeParams).toBeUndefined()
+  })
+
+  it('compiles modifyQueryParams — remove only', () => {
+    const rule = baseRule({
+      type: 'modifyQueryParams',
+      action: { type: 'modifyQueryParams', remove: ['utm_source'] },
+    })
+    const rules = compileToDNR([rule])
+    const a = rules[0].action as any
+    expect(a.redirect.transform.queryTransform.removeParams).toEqual(['utm_source'])
+    expect(a.redirect.transform.queryTransform.addOrReplaceParams).toBeUndefined()
+  })
+
   it('applies resource type filter', () => {
     const rule = baseRule({
       condition: { urlOperator: 'contains', urlValue: 'api', resourceTypes: ['xmlhttprequest'] },
