@@ -1,92 +1,129 @@
 # ProxyPilot
 
-A Chrome extension (Manifest V3) for intercepting and modifying HTTP requests and responses. Feature-parity target: [Requestly](https://requestly.io).
+A Manifest V3 Chrome extension for intercepting and modifying HTTP requests and responses — redirect, block, mock, modify headers/body, inject scripts, add delay, and more.
+
+> Inspired by [Requestly](https://requestly.io). Built on top of its open-source page-layer interceptor (AGPL-3.0).
+
+---
+
+## Screenshots
+
+**Rules dashboard**
+
+![Rules dashboard](index.png)
+
+**Create / edit a rule**
+
+![New rule editor](add_new.png)
+
+---
 
 ## Features
 
-### MVP Rules (implemented)
-| Rule | Description | Implementation |
+| Rule | Description | Engine |
 |---|---|---|
-| **Redirect** | Redirect matching URLs to a new URL | DNR |
-| **Block / Cancel** | Block matching requests | DNR |
-| **Modify Headers** | Add/remove/set request or response headers | DNR |
-| **Mock Response** | Replace response body, status code, or serve without request | interceptor.js (page layer) |
-| **Insert Script** | Inject custom JS/CSS into pages | DNR (scripting API) |
-| **Delay** | Add latency to matching requests | interceptor.js |
-| **Modify Request Body** | Replace request payload | interceptor.js |
-| **Replace String** | Replace URL substrings | DNR |
-| **Modify Query Params** | Add/remove URL query parameters | DNR |
-| **User Agent** | Override the User-Agent header | DNR |
+| **Redirect** | Redirect a matching URL to another | DNR |
+| **Block** | Cancel matching requests | DNR |
+| **Modify Headers** | Set / append / remove request or response headers | DNR |
+| **Mock Response** | Replace response body, status code; optionally serve without a real request | Page layer |
+| **Modify Request Body** | Replace or rewrite the request payload | Page layer |
+| **Delay** | Add artificial latency to matching requests | Page layer |
+| **Insert Script** | Inject custom JS or CSS into a page | DNR (scripting) |
+| **Replace String** | Swap a substring in the matched URL | DNR |
+| **Modify Query Params** | Add, override, or remove URL query parameters | DNR |
+| **User Agent** | Override the `User-Agent` header | DNR |
 
-### URL Matching
-- Contains
-- Equals (exact)
-- Regex Matches
-- Wildcard (`*`)
+### URL matching operators
+
+`Contains` · `Equals` · `Regex` · `Wildcard (*)`
 
 Optional filters: HTTP method, resource type.
 
-## Installation (development)
+---
+
+## Installation
 
 ```bash
+git clone https://github.com/deenrookie/proxypilot-extension.git
+cd proxypilot-extension
 npm install
 npm run build
 ```
 
+Then load the extension in Chrome:
+
 1. Open `chrome://extensions`
-2. Enable **Developer mode**
+2. Enable **Developer mode** (top-right toggle)
 3. Click **Load unpacked**
 4. Select the `dist/` folder
 
+---
+
 ## Usage
 
-1. Click the ProxyPilot icon in the toolbar to open the popup.
-2. Use the **Enable/Disable** toggle to pause all rules.
-3. Click **Manage rules →** to open the full editor.
-4. In the editor, select a rule type, set a URL condition, configure the action, and save.
+| Where | What you can do |
+|---|---|
+| **Toolbar popup** | Master on/off toggle · quick enable/disable per rule · open full editor |
+| **Options page** | Create, edit, delete, reorder rules · live URL match tester · import / export JSON |
 
-### URL Tester
-In the rule editor there's a live URL test field — paste any URL to see if it matches your current condition.
+### URL tester
+
+Every rule editor has a **Test URL** field. Paste any URL and the UI shows immediately whether the current condition matches.
 
 ### Import / Export
-Click **Export** in the options page to get a JSON snapshot of all rules. Paste it back and click **Import** to restore or merge rules.
+
+Click **Export** in the options page header to download a JSON snapshot of all rules. To restore, paste it back into the same field and click **Import**.
+
+---
 
 ## Architecture
 
-### Dual-layer interception
+ProxyPilot uses a **dual-layer** interception model because MV3 removed blocking `webRequest`:
 
 ```
-Storage (chrome.storage.local)
-    │
-    ▼
-background.js (Service Worker)
-    ├─── DNR rules → chrome.declarativeNetRequest  (Redirect, Block, Headers, ...)
-    └─── Page rules → content-script.js (postMessage) → interceptor.js (MAIN world)
-                                                           (Mock Response, Request Body, Delay)
+chrome.storage.local
+        │
+        ▼
+background.js  (Service Worker)
+        ├── DNR path  →  chrome.declarativeNetRequest
+        │                (Redirect, Block, Headers, Query params, Replace, UA)
+        └── Page path →  content-script.js  ──postMessage──▶  interceptor.js
+                         (ISOLATED world bridge)               (MAIN world)
+                                                               Overrides fetch / XHR
+                                                               (Mock, Request body, Delay)
 ```
 
-- **`background.js`** — Service worker. Reads storage, compiles DNR rules, pushes page-level rules to tabs.
-- **`content-script.js`** — Isolated world bridge. Relays rules to interceptor and logs back to background.
-- **`interceptor.js`** — MAIN world. Overrides `fetch` / `XMLHttpRequest` to apply response-body/request-body/delay rules.
-- **`popup`** — Quick toggle and rule list.
-- **`options`** — Full rule CRUD editor with URL tester and import/export.
+| File | Role |
+|---|---|
+| `background.js` | Compiles rules → DNR; pushes page-layer rules to each tab; toggles the toolbar icon |
+| `content-script.js` | Bridge between extension and page; relays rules and intercept logs |
+| `interceptor.js` | MAIN world; overrides `fetch` / `XMLHttpRequest`; hooks are installed **lazily** — never executed when the extension is disabled |
+| `popup` | Toolbar UI — master toggle + per-rule quick toggle |
+| `options` | Full rule editor — CRUD, URL tester, import/export |
 
-### interceptor.js
+### Lazy hook installation
 
-Derived from the open-source Requestly interceptor (AGPL-3.0). All Requestly-specific identifiers have been replaced with ProxyPilot identifiers (`__PROXYPILOT__`, `PROXYPILOT_INTERCEPTOR`, etc.) and all external reporting code has been removed.
+When the extension is **disabled**, `interceptor.js` loads but installs **zero hooks** on `XMLHttpRequest` or `fetch`. The toolbar icon switches to gray. Re-enabling restores full interception without a page reload.
 
-Original copyright: Requestly contributors. License: AGPL-3.0.
+### interceptor.js lineage
+
+Derived from the open-source Requestly page interceptor (AGPL-3.0). All Requestly-specific identifiers, external reporting endpoints, and telemetry have been removed. Original copyright: Requestly contributors.
+
+---
 
 ## Development
 
 ```bash
-npm run dev      # watch mode build
-npm test         # run unit tests (matcher + DNR compiler)
-npm run build    # production build → dist/
+npm run dev       # watch mode — rebuilds on every save
+npm test          # unit tests (URL matcher + DNR compiler, 29 tests)
+npm run gen:icons # regenerate PNG icons from assets/icons/icon.svg
+npm run build     # production build → dist/
 ```
+
+---
 
 ## Known limitations
 
-- **MV3 cannot modify response bodies via the network layer** — mock/response-body rules require the page-layer interceptor. Very early requests (before `document_start`) may not be intercepted.
-- **CSP-restricted pages** may block script injection for Insert Script rules.
-- **DNR rule limit**: Chrome enforces a maximum number of dynamic rules (~5000).
+- **Response body modification** requires the page-layer interceptor. Requests made before `document_start` may not be captured.
+- **CSP-strict pages** can block Insert Script rules.
+- Chrome caps `declarativeNetRequest` dynamic rules at ~5 000 entries.
