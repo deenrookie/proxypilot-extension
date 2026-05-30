@@ -1,6 +1,6 @@
 import type { Rule, InterceptorRule, InterceptorPair } from '../shared/types'
 
-const PAGE_LEVEL_TYPES = new Set(['modifyResponse', 'modifyRequestBody', 'delay'])
+const PAGE_LEVEL_TYPES = new Set(['modifyResponse', 'replaceInResponse', 'modifyRequestBody', 'delay'])
 const DNR_TYPES = new Set(['redirect', 'block', 'modifyHeaders', 'modifyQueryParams', 'replace', 'userAgent'])
 
 export function splitRules(rules: Rule[]): { dnrRules: Rule[]; pageRules: Rule[] } {
@@ -58,6 +58,22 @@ export function toInterceptorRules(rules: Rule[]): {
             value: rule.action.body,
             statusCode: rule.action.statusCode,
             serveWithoutRequest: rule.action.serveWithoutRequest ?? false,
+          },
+        }],
+      })
+    } else if (rule.action.type === 'replaceInResponse') {
+      responseRules.push({
+        id: rule.id,
+        ruleType: 'Response',
+        pairs: [{
+          source,
+          response: {
+            type: 'replace',
+            value: '',               // unused for replace type
+            serveWithoutRequest: false,
+            search: rule.action.search,
+            replacement: rule.action.replacement,
+            useRegex: rule.action.useRegex,
           },
         }],
       })

@@ -13,6 +13,7 @@ const RULE_TYPES: { value: RuleType; label: string }[] = [
   { value: 'block', label: 'Block / Cancel' },
   { value: 'modifyHeaders', label: 'Modify Headers' },
   { value: 'modifyResponse', label: 'Mock Response' },
+  { value: 'replaceInResponse', label: 'Replace in Response' },
   { value: 'insertScript', label: 'Insert Script' },
   { value: 'modifyQueryParams', label: 'Modify Query Params' },
   { value: 'modifyRequestBody', label: 'Modify Request Body' },
@@ -34,6 +35,7 @@ function makeDefaultAction(type: RuleType): RuleAction {
     case 'block': return { type: 'block' }
     case 'modifyHeaders': return { type: 'modifyHeaders', request: [], response: [] }
     case 'modifyResponse': return { type: 'modifyResponse', body: '{}', bodyType: 'static', statusCode: 200, serveWithoutRequest: true }
+    case 'replaceInResponse': return { type: 'replaceInResponse', search: '', replacement: '', useRegex: false }
     case 'insertScript': return { type: 'insertScript', code: '', lang: 'js', runAt: 'document_end' }
     case 'modifyQueryParams': return { type: 'modifyQueryParams', add: {}, remove: [] }
     case 'modifyRequestBody': return { type: 'modifyRequestBody', body: '', bodyType: 'static' }
@@ -103,6 +105,43 @@ function ActionEditor({ action, onChange }: { action: RuleAction; onChange: (a: 
               onChange={(e) => onChange({ ...action, serveWithoutRequest: e.target.checked })} />
             <span>Serve without sending actual request (pure mock)</span>
           </label>
+        </>
+      )
+
+    case 'replaceInResponse':
+      return (
+        <>
+          <label style={S.field}>
+            <span style={S.label}>{action.useRegex ? 'Search pattern (regex)' : 'Search text'}</span>
+            <input
+              style={S.input}
+              value={action.search}
+              onChange={(e) => onChange({ ...action, search: e.target.value })}
+              placeholder={action.useRegex ? 'true|enabled' : 'true'}
+              spellCheck={false}
+            />
+          </label>
+          <label style={S.field}>
+            <span style={S.label}>Replace with</span>
+            <input
+              style={S.input}
+              value={action.replacement}
+              onChange={(e) => onChange({ ...action, replacement: e.target.value })}
+              placeholder="false"
+              spellCheck={false}
+            />
+          </label>
+          <label style={S.checkRow}>
+            <input
+              type="checkbox"
+              checked={action.useRegex}
+              onChange={(e) => onChange({ ...action, useRegex: e.target.checked })}
+            />
+            <span>Use regular expression — replaces all matches globally</span>
+          </label>
+          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
+            The actual request is still sent; only the response body text is rewritten.
+          </p>
         </>
       )
 

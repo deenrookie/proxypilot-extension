@@ -409,6 +409,24 @@
 
   const delay = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // ============================ Response-body replace helper ============================
+
+  /**
+   * Apply a search-and-replace on rawText according to a "replace" response config.
+   * Supports plain-string (replaces ALL occurrences) and regex with optional flags.
+   * Returns the original text untouched if the pattern is an invalid regex.
+   */
+  const applyBodyReplace = (rawText, responseConfig) => {
+    try {
+      const pat = responseConfig.useRegex
+        ? new RegExp(responseConfig.search, 'g')
+        : new RegExp((responseConfig.search ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      return rawText.replace(pat, responseConfig.replacement ?? '');
+    } catch (e) {
+      return rawText; // invalid regex — pass through unchanged
+    }
+  };
+
   // ============================ XHR interceptor ============================
 
   const interceptXHR = (debug) => {
@@ -477,6 +495,11 @@
                 responseJSON: safeJsonParse(this.response, true),
               };
               customResponse = buildUserFunction(responseConfig.value, "response")(context);
+            } else if (responseConfig.type === "replace") {
+              const rawText = typeof this.response === "string"
+                ? this.response
+                : (this.response != null ? JSON.stringify(this.response) : "");
+              customResponse = applyBodyReplace(rawText, responseConfig);
             } else {
               customResponse = responseConfig.value;
             }
@@ -819,6 +842,9 @@
             if (typeof customResponse === "object" && isJsonContentType(context?.responseType)) {
               customResponse = JSON.stringify(customResponse);
             }
+          } else if (responseConfig.type === "replace") {
+            const rawText = fetchedResponse ? await fetchedResponse.text() : "";
+            customResponse = applyBodyReplace(rawText, responseConfig);
           } else {
             customResponse = responseConfig.value;
           }

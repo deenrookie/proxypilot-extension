@@ -3,6 +3,7 @@ export type RuleType =
   | 'block'
   | 'modifyHeaders'
   | 'modifyResponse'
+  | 'replaceInResponse'
   | 'insertScript'
   | 'modifyQueryParams'
   | 'modifyRequestBody'
@@ -30,6 +31,7 @@ export type RuleAction =
   | { type: 'block' }
   | { type: 'modifyHeaders'; request?: HeaderOp[]; response?: HeaderOp[] }
   | { type: 'modifyResponse'; statusCode?: number; body: string; bodyType: 'static' | 'jsFunction'; serveWithoutRequest?: boolean }
+  | { type: 'replaceInResponse'; search: string; replacement: string; useRegex: boolean }
   | { type: 'insertScript'; code: string; lang: 'js' | 'css'; runAt: 'document_start' | 'document_end' }
   | { type: 'modifyQueryParams'; add?: Record<string, string>; remove?: string[] }
   | { type: 'modifyRequestBody'; body: string; bodyType: 'static' | 'jsFunction' }
@@ -68,11 +70,15 @@ export interface InterceptorPair {
     filters?: Array<{ requestMethod?: string[]; resourceType?: string[] }>
   }
   response?: {
-    type: 'static' | 'code'
+    type: 'static' | 'code' | 'replace'
     value: string
     statusCode?: number
     statusText?: string
     serveWithoutRequest?: boolean
+    // used when type === 'replace'
+    search?: string
+    replacement?: string
+    useRegex?: boolean
   }
   request?: {
     type: 'static' | 'code'
