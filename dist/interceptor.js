@@ -18,6 +18,8 @@
   window.__PROXYPILOT_INSTALLED__ = true;
 
   const PP_NAMESPACE = "__PROXYPILOT__";
+  // Whether XHR/fetch hooks have been installed on this page
+  let _hooksInstalled = false;
 
   // ============================ Enum constants ============================
 
@@ -620,6 +622,8 @@
 
     const nativeSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = async function (body) {
+      // Fast path: pass through untouched when disabled
+      if (!window[PP_NAMESPACE]?.enabled) return nativeSend.call(this, body);
       try {
         if (!this._ppProxyXhr._async) {
           if (debug) console.log("[PP] Async disabled");
@@ -708,16 +712,22 @@
     let debug;
     try { debug = window && window.localStorage && localStorage.isDebugMode; } catch (e) {}
 
-    // Install XHR interceptor
-    interceptXHR(debug);
+    // Install XHR + fetch hooks exactly once, only when extension is enabled.
+    function installHooks() {
+      if (_hooksInstalled) return;
+      _hooksInstalled = true;
 
-    // Install fetch interceptor
-    ((debug) => {
+      // XHR interceptor (patches XMLHttpRequest global + prototype methods)
+      interceptXHR(debug);
+
+      // fetch interceptor
       const nativeFetch = fetch;
-
       fetch = async (...args) => {
         const [resource, init = {}] = args;
         const callNativeFetch = () => nativeFetch(...args);
+
+        // Fast path when disabled after hooks were already installed
+        if (!window[PP_NAMESPACE]?.enabled) return callNativeFetch();
 
         try {
           let request;
@@ -830,7 +840,9 @@
           return await callNativeFetch();
         }
       };
-    })(debug);
+
+      if (debug) console.log("[ProxyPilot] Hooks installed");
+    }
 
     // On page unload, cache shared state up to top frame
     if (window.top === window.self) {
@@ -846,24 +858,33 @@
       });
     }
 
-    // Register postMessage listener to receive rules from content script
+    // Receive rules + enabled flag from content script.
+    // installHooks() is called lazily here so that a disabled extension
+    // never touches XMLHttpRequest or fetch at all.
     window.addEventListener("message", (event) => {
       if (event.source !== window) return;
       const msg = event.data;
       if (!msg || msg.source !== "PROXYPILOT_CONTENT") return;
       if (msg.type === "RULES_UPDATE") {
         const payload = msg.payload || {};
+        const enabled = payload.enabled !== false; // absent/true → enabled
+
         window[PP_NAMESPACE] = window[PP_NAMESPACE] || {};
+        window[PP_NAMESPACE].enabled = enabled;
         if (Array.isArray(payload.requestRules)) window[PP_NAMESPACE].requestRules = payload.requestRules;
         if (Array.isArray(payload.responseRules)) window[PP_NAMESPACE].responseRules = payload.responseRules;
         if (Array.isArray(payload.delayRules)) window[PP_NAMESPACE].delayRules = payload.delayRules;
-        if (debug) console.log("[PP] Rules updated", window[PP_NAMESPACE]);
+
+        // Only install hooks when first enabled — never when disabled
+        if (enabled) installHooks();
+
+        if (debug) console.log("[PP] Rules updated, enabled:", enabled, window[PP_NAMESPACE]);
       }
     });
 
-    // Cold start: ask content script for current rules
+    // Cold start: ask content script for current rules + enabled state
     window.postMessage({ source: "PROXYPILOT_INTERCEPTOR", type: "REQUEST_RULES" }, "*");
 
-    console.log("[ProxyPilot] Interceptor installed");
+    console.log("[ProxyPilot] Interceptor ready");
   })();
 }();

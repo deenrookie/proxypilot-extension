@@ -17,12 +17,13 @@ export default defineConfig({
         if (existsSync('manifest.json')) {
           copyFileSync('manifest.json', 'dist/manifest.json')
         }
-        // Copy icons
+        // Copy icons (enabled + disabled variants)
         const iconSizes = ['16', '32', '48', '128']
+        const iconSuffixes = ['', '-disabled']
         for (const size of iconSizes) {
-          const src = `assets/icons/icon${size}.png`
-          if (existsSync(src)) {
-            copyFileSync(src, `dist/icon${size}.png`)
+          for (const suffix of iconSuffixes) {
+            const src = `assets/icons/icon${size}${suffix}.png`
+            if (existsSync(src)) copyFileSync(src, `dist/icon${size}${suffix}.png`)
           }
         }
       },

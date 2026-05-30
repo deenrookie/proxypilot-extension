@@ -1,7 +1,5 @@
 /**
- * Generate PNG icons from the master SVG at each required Chrome extension size.
- * Uses @resvg/resvg-js (Rust-based, high-quality, works offline on all platforms).
- *
+ * Generate PNG icons (enabled + disabled) from master SVGs.
  * Run: node scripts/generate-icons.mjs
  */
 
@@ -12,38 +10,40 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
-
-const SVG_PATH = resolve(root, 'assets/icons/icon.svg')
-const SIZES = [16, 32, 48, 128]
-
-const svg = readFileSync(SVG_PATH, 'utf-8')
-
-// Ensure output directories exist
 const iconsDir = resolve(root, 'assets/icons')
+const distDir = resolve(root, 'dist')
+
 mkdirSync(iconsDir, { recursive: true })
 
-console.log('Generating PNG icons from', SVG_PATH)
+const SIZES = [16, 32, 48, 128]
+const VARIANTS = [
+  { svgFile: 'icon.svg',          suffix: '' },
+  { svgFile: 'icon-disabled.svg', suffix: '-disabled' },
+]
 
-for (const size of SIZES) {
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: 'width', value: size },
-    font: { loadSystemFonts: false },
-  })
+function render(svgPath, size) {
+  const svg = readFileSync(svgPath, 'utf-8')
+  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: size }, font: { loadSystemFonts: false } })
+  return resvg.render().asPng()
+}
 
-  const rendered = resvg.render()
-  const png = rendered.asPng()
+for (const { svgFile, suffix } of VARIANTS) {
+  const svgPath = resolve(iconsDir, svgFile)
+  if (!existsSync(svgPath)) { console.warn(`  ⚠  ${svgFile} not found, skipping`); continue }
 
-  const destIcons = resolve(iconsDir, `icon${size}.png`)
-  writeFileSync(destIcons, png)
-  console.log(`  ✓ assets/icons/icon${size}.png  (${size}×${size})`)
+  console.log(`\nGenerating from ${svgFile}`)
+  for (const size of SIZES) {
+    const png = render(svgPath, size)
+    const name = `icon${size}${suffix}.png`
 
-  // Also write to dist/ if it already exists (post-build convenience)
-  const distDir = resolve(root, 'dist')
-  if (existsSync(distDir)) {
-    const destDist = resolve(distDir, `icon${size}.png`)
-    writeFileSync(destDist, png)
-    console.log(`  ✓ dist/icon${size}.png  (${size}×${size})`)
+    writeFileSync(resolve(iconsDir, name), png)
+    console.log(`  ✓ assets/icons/${name}`)
+
+    if (existsSync(distDir)) {
+      writeFileSync(resolve(distDir, name), png)
+      console.log(`  ✓ dist/${name}`)
+    }
   }
 }
 
-console.log('Done.')
+console.log('\nDone.')

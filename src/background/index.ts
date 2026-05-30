@@ -10,99 +10,85 @@ import { getState as _getState, setMasterEnabled, upsertRule, deleteRule } from 
 
 console.log('[ProxyPilot] Service worker started')
 
-// Apply DNR rules from current state
+// ── Icon management ──────────────────────────────────────────────────────────
+
+async function updateActionIcon(enabled: boolean): Promise<void> {
+  const s = enabled ? '' : '-disabled'
+  await chrome.action.setIcon({
+    path: { 16: `icon16${s}.png`, 32: `icon32${s}.png`, 48: `icon48${s}.png`, 128: `icon128${s}.png` },
+  })
+}
+
+// ── DNR rules ────────────────────────────────────────────────────────────────
+
 async function applyDNR(state: GlobalState): Promise<void> {
+  const removeRuleIds = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.id)
   if (!state.masterEnabled) {
-    await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: await getExistingDNRIds() })
+    await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds })
     return
   }
   const { dnrRules } = splitRules(state.rules)
-  const compiled = compileToDNR(dnrRules)
-  const removeRuleIds = await getExistingDNRIds()
-  await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules: compiled })
-  console.log(`[ProxyPilot] DNR: removed ${removeRuleIds.length}, added ${compiled.length} rules`)
+  const addRules = compileToDNR(dnrRules)
+  await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules })
+  console.log(`[ProxyPilot] DNR: removed ${removeRuleIds.length}, added ${addRules.length} rules`)
 }
 
-async function getExistingDNRIds(): Promise<number[]> {
-  const existing = await chrome.declarativeNetRequest.getDynamicRules()
-  return existing.map((r) => r.id)
-}
+// ── Page-layer rules ─────────────────────────────────────────────────────────
 
-// Push page-level rules to all matching tabs
-async function pushPageRules(state: GlobalState): Promise<void> {
-  const enabled = state.masterEnabled
+function buildPagePayload(state: GlobalState): Record<string, unknown> {
+  if (!state.masterEnabled) {
+    return { enabled: false, requestRules: [], responseRules: [], delayRules: [] }
+  }
   const { pageRules } = splitRules(state.rules)
-  const payload = enabled ? toInterceptorRules(pageRules) : { requestRules: [], responseRules: [], delayRules: [] }
+  return { enabled: true, ...toInterceptorRules(pageRules) }
+}
 
+async function pushPageRules(state: GlobalState): Promise<void> {
+  const payload = buildPagePayload(state)
   const tabs = await chrome.tabs.query({})
   for (const tab of tabs) {
     if (!tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue
-    chrome.tabs.sendMessage(tab.id, { action: ACTION_PUSH_RULES, payload }).catch(() => {
-      // Tab may not have content script loaded yet — ignore
-    })
+    chrome.tabs.sendMessage(tab.id, { action: ACTION_PUSH_RULES, payload }).catch(() => {})
   }
 }
+
+// ── Sync ─────────────────────────────────────────────────────────────────────
 
 async function syncAll(): Promise<void> {
   const state = await getState()
-  await Promise.all([applyDNR(state), pushPageRules(state)])
+  await Promise.all([applyDNR(state), pushPageRules(state), updateActionIcon(state.masterEnabled)])
 }
 
-// Listen for storage changes
 onStateChanged((state) => {
   applyDNR(state).catch(console.error)
   pushPageRules(state).catch(console.error)
+  updateActionIcon(state.masterEnabled).catch(console.error)
 })
 
-// Initial sync on startup
 syncAll().catch(console.error)
 
-// Runtime message handler (popup / options / content-script)
+// ── Message handler ───────────────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   ;(async () => {
     switch (msg.action) {
-      case ACTION_GET_STATE: {
-        const state = await _getState()
-        sendResponse(state)
-        break
-      }
-      case ACTION_SET_MASTER: {
-        await setMasterEnabled(msg.payload as boolean)
-        sendResponse({ ok: true })
-        break
-      }
-      case ACTION_UPSERT_RULE: {
-        await upsertRule(msg.payload)
-        sendResponse({ ok: true })
-        break
-      }
-      case ACTION_DELETE_RULE: {
-        await deleteRule(msg.payload as string)
-        sendResponse({ ok: true })
-        break
-      }
-      case ACTION_LOG_INTERCEPT: {
-        console.log('[ProxyPilot] intercepted', msg.payload)
-        sendResponse({ ok: true })
-        break
-      }
-      default:
-        sendResponse({ error: 'unknown action' })
+      case ACTION_GET_STATE:    sendResponse(await _getState()); break
+      case ACTION_SET_MASTER:   await setMasterEnabled(msg.payload as boolean); sendResponse({ ok: true }); break
+      case ACTION_UPSERT_RULE:  await upsertRule(msg.payload); sendResponse({ ok: true }); break
+      case ACTION_DELETE_RULE:  await deleteRule(msg.payload as string); sendResponse({ ok: true }); break
+      case ACTION_LOG_INTERCEPT: console.log('[ProxyPilot] intercepted', msg.payload); sendResponse({ ok: true }); break
+      default: sendResponse({ error: 'unknown action' })
     }
   })()
-  return true // keep channel open for async response
+  return true
 })
 
-// When a new tab finishes loading, push its rules
+// ── Tab lifecycle ─────────────────────────────────────────────────────────────
+
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
-    getState().then((state) => {
-      if (!tab.id) return
-      const { pageRules } = splitRules(state.rules)
-      const payload = state.masterEnabled
-        ? toInterceptorRules(pageRules)
-        : { requestRules: [], responseRules: [], delayRules: [] }
-      chrome.tabs.sendMessage(tab.id, { action: ACTION_PUSH_RULES, payload }).catch(() => {})
-    })
-  }
+  if (changeInfo.status !== 'complete' || !tab.url || tab.url.startsWith('chrome://')) return
+  getState().then((state) => {
+    if (!tab.id) return
+    chrome.tabs.sendMessage(tab.id, { action: ACTION_PUSH_RULES, payload: buildPagePayload(state) }).catch(() => {})
+  })
 })
